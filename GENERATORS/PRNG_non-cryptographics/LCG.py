@@ -1,11 +1,47 @@
+# generators/lcg.py
+"""
+Linear Congruential Generator (LCG)
+Générateur pseudo-aléatoire déterministe basé sur une récurrence linéaire
+https://fr.wikipedia.org/wiki/G%C3%A9n%C3%A9rateur_congruentiel_lin%C3%A9aire
+"""
 
-def lcg(seed, a, c, mod):
-    while True:
-        seed = (a * seed + c) % mod
-        yield seed             # yield à l'instar de return suspend l'exec de le fct renvoie la valeur et sauvegarde son état pour reprendre là où elle s'esr arretée
+def lcg(seed, a, c, m, n):
+    """
+    Génère n nombres avec LCG
+    
+    Formule: X_{i+1} = (a * X_i + c) mod m
+    
+    Sortie:
+        Liste de n entiers dans [0, m-1]
+    """
+    x = seed
+    results = []
+    
+    for _ in range(n):
+        x = (a * x + c) % m  # Relation de récurrence (formule de la suite)
+        results.append(x)
+    
+    return results
 
 
-# test du programme 
-gen = lcg(mod = 2**32, a = 1664525, c = 1013904223, seed = 42)
-for i in range(10):
-    print(next(gen))
+# Paramètres standards connus
+# Source: glibc (bibliothèque standard C)
+PARAMS_GLIBC = {
+    'a': 1103515245,
+    'c': 12345,
+    'm': 2**31
+}
+
+# RANDU: exemple de mauvais LCG 
+PARAMS_RANDU = {
+    'a': 65539,
+    'c': 0,
+    'm': 2**31
+}
+
+# MMIX de Knuth: haute qualité
+PARAMS_KNUTH = {
+    'a': 6364136223846793005,
+    'c': 1442695040888963407,
+    'm': 2**64
+}
