@@ -24,7 +24,7 @@ def lcg(seed, a, c, m, n):
     return results
 
 
-# Paramètres standards connus
+# Paramètres standards connus (on peut aussi Robert Sedgewick, Standard Minimal)
 # Source: glibc (bibliothèque standard C)
 PARAMS_GLIBC = {
     'a': 1103515245,
@@ -39,7 +39,7 @@ PARAMS_RANDU = {
     'm': 2**31
 }
 
-# MMIX de Knuth: haute qualité
+# MMIX de Knuth: 
 PARAMS_KNUTH = {
     'a': 6364136223846793005,
     'c': 1442695040888963407,
