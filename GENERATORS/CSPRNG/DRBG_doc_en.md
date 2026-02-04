@@ -1,63 +1,59 @@
-# HMAC_DRBG - NIST SP 800-90A Deterministic Random Bit Generator
+# Hash_DRBG - Simple Deterministic Random Bit Generator
 
 ## Overview
 
-This implementation demonstrates the **HMAC-based Deterministic Random Bit Generator (HMAC_DRBG)**, a cryptographically secure pseudorandom number generator (CSPRNG) defined in **NIST Special Publication 800-90A Revision 1**.
+This implementation demonstrates a **simplified Hash-based Deterministic Random Bit Generator (Hash_DRBG)**, a cryptographically secure pseudorandom number generator (CSPRNG) based on the **SHA-256 hash function**.
 
-HMAC_DRBG is one of the most widely used and recommended CSPRNGs, providing provable security properties and used in numerous cryptographic applications including TLS, Bitcoin, and secure key generation.
+Unlike the more complex HMAC_DRBG specified in NIST SP 800-90A, this simplified version uses only SHA-256 to demonstrate the core principles of deterministic random bit generation in an easy-to-understand manner.
 
 ## Algorithm Description
 
 ### Mathematical Foundation
 
-HMAC_DRBG is based on the **HMAC (Hash-based Message Authentication Code)** construction, which provides:
-- **Prediction resistance**: Given current and previous outputs, it is computationally infeasible to predict future outputs
-- **Backtracking resistance**: Given current state, it is computationally infeasible to determine previous outputs
-- **Forward security**: Compromise of current state does not reveal previous outputs
+Hash_DRBG is based on the **SHA-256 cryptographic hash function**, which provides:
+- **One-way property**: Given an output, it is computationally infeasible to find the input
+- **Collision resistance**: It is computationally infeasible to find two different inputs that produce the same output
+- **Avalanche effect**: A small change in input produces a completely different output
 
 ### Core Components
 
 The DRBG maintains an internal state consisting of:
-- **V**: A value that is updated each iteration (32 bytes for SHA-256)
-- **Key**: The key for the HMAC function (32 bytes for SHA-256)
-- **reseed_counter**: Tracks the number of generate requests since last instantiation/reseed
+- **seed**: The internal state value (32 bytes for SHA-256)
+- **counter**: Tracks the number of generate requests to ensure state uniqueness
 
 ### DRBG Operations
 
-#### 1. Instantiate ([HMAC_DRBG.py:43-58](HMAC_DRBG.py#L43-L58))
+#### 1. Instantiate ([Hash_DRBG.py:20-36](Hash_DRBG.py#L20-L36))
 
 Initializes the DRBG with entropy input:
 ```python
-drbg = HMAC_DRBG(
-    entropy=os.urandom(32),        # 256 bits minimum
-    nonce=os.urandom(16),          # 128 bits recommended
-    personalization=b"My_App_2026" # Optional
+drbg = Simple_Hash_DRBG(
+    entropy=os.urandom(32)  # 256 bits minimum
 )
 ```
 
 **Process**:
-1. Construct seed_material = entropy || nonce || personalization
-2. Initialize: Key = 0x00...00 (32 bytes), V = 0x01...01 (32 bytes)
-3. Update internal state using Update function
-4. Set reseed_counter = 1
+1. Verify entropy is at least 32 bytes (256 bits)
+2. Initialize: seed = SHA256(entropy)
+3. Set counter = 0
 
-#### 2. Generate ([HMAC_DRBG.py:103-134](HMAC_DRBG.py#L103-L134))
+#### 2. Generate ([Hash_DRBG.py:38-70](Hash_DRBG.py#L38-L70))
 
 Produces pseudorandom output:
 ```python
-random_bytes = drbg.generate(32)  # Generate 32 random bytes
-random_bits = drbg.generate_bits(10000)  # Generate 10000 random bits
-random_int = drbg.randint(1, 100)  # Random integer in [1, 100]
+random_bytes = drbg.generate(32)           # Generate 32 random bytes
+random_bits = drbg.generate_bits(1000)     # Generate 1000 random bits
+random_int = drbg.randint(1, 100)          # Random integer in [1, 100]
 ```
 
 **Process**:
-1. Check if reseed_counter > reseed_interval (default: 10,000)
-2. If additional_input provided, update state
-3. Generate output: repeatedly compute V = HMAC(Key, V)
-4. Update internal state
-5. Increment reseed_counter
+1. Initialize output buffer and temporary counter
+2. Generate output: repeatedly compute chunk = SHA256(seed || temp_counter)
+3. Accumulate chunks until we have enough bytes
+4. Update internal state: seed = SHA256(seed || counter)
+5. Increment counter
 
-#### 3. Reseed ([HMAC_DRBG.py:94-101](HMAC_DRBG.py#L94-L101))
+#### 3. Reseed ([Hash_DRBG.py:131-143](Hash_DRBG.py#L131-L143))
 
 Adds fresh entropy to maintain security:
 ```python
@@ -65,19 +61,17 @@ drbg.reseed(entropy=os.urandom(32))
 ```
 
 **Process**:
-1. Construct seed_material = entropy || additional_input
-2. Update internal state with seed_material
-3. Reset reseed_counter = 1
+1. Combine old seed with new entropy
+2. Update seed = SHA256(old_seed || new_entropy)
+3. Reset counter = 0
 
-#### 4. Update Function ([HMAC_DRBG.py:60-92](HMAC_DRBG.py#L60-L92))
+#### 4. Update State Function ([Hash_DRBG.py:72-80](Hash_DRBG.py#L72-L80))
 
-Internal state update mechanism (NIST SP 800-90A Section 10.1.2.2):
+Internal state update mechanism (called after each generation):
 ```python
-# Step 1: Key = HMAC(Key, V || 0x00 || provided_data)
-# Step 2: V = HMAC(Key, V)
-# Step 3: If provided_data exists:
-#         Key = HMAC(Key, V || 0x01 || provided_data)
-#         V = HMAC(Key, V)
+# Update formula:
+seed = SHA256(seed || counter)
+counter = counter + 1
 ```
 
 ## Implementation Details
@@ -87,74 +81,107 @@ Internal state update mechanism (NIST SP 800-90A Section 10.1.2.2):
 Using **SHA-256** as the hash function:
 - **Security strength**: 256 bits
 - **Entropy input**: Minimum 256 bits (32 bytes)
-- **Nonce**: Recommended 128 bits (16 bytes)
-- **Reseed interval**: 10,000 requests (configurable)
+- **Output block size**: 32 bytes per hash operation
+- **State size**: 32 bytes (seed) + 4 bytes (counter)
 
 ### Key Features
 
-1. **Full compliance with NIST SP 800-90A Rev. 1**
-2. **Prediction resistance**: Cannot predict future outputs even with knowledge of previous outputs
-3. **Backtracking resistance**: Cannot recover previous outputs from current state
+1. **Simplified design**: Uses only SHA-256, no HMAC construction
+2. **Easy to understand**: Minimal complexity for educational purposes
+3. **Cryptographically secure**: Based on SHA-256's one-way property
 4. **Reseed support**: Can incorporate fresh entropy at any time
-5. **Personalization**: Supports personalization strings for application-specific instances
-6. **Additional input**: Supports additional input for each generate request
+5. **Deterministic**: Same seed produces same output sequence
+
+### Comparison with HMAC_DRBG
+
+| Property | Simple Hash_DRBG | HMAC_DRBG |
+|----------|------------------|-----------|
+| **Hash Function** | SHA-256 only | HMAC-SHA-256 |
+| **Internal State** | 1 value (seed) | 2 values (V, Key) |
+| **Complexity** | Low | Medium |
+| **NIST Compliance** | Simplified version | Full compliance |
+| **Update Steps** | 1 hash operation | 2-4 HMAC operations |
+| **Code Lines** | ~220 | ~310 |
+| **Best For** | Learning, understanding | Production use |
+
+## How It Works - Step by Step
+
+### Initialization
+```
+1. entropy = os.urandom(32)          → 32 random bytes
+2. seed = SHA256(entropy)             → Initial internal state
+3. counter = 0                        → Request counter
+```
+
+### Generation
+```
+1. temp_counter = 0
+2. output = ""
+3. while output_length < requested:
+   - chunk = SHA256(seed || temp_counter)
+   - output += chunk
+   - temp_counter += 1
+4. result = output[0:requested_length]
+5. Update state:
+   - counter += 1
+   - seed = SHA256(seed || counter)
+```
+
+### Why It's Secure
+- **Forward security**: After state update, previous outputs cannot be determined
+- **Prediction resistance**: Cannot predict future outputs from current output
+- **One-way function**: SHA-256 is irreversible
 
 ## Statistical Tests
 
-The implementation includes comprehensive statistical tests to verify randomness quality:
+The implementation includes statistical tests to verify randomness quality:
 
 ### 1. Bit Distribution Test
 - Counts frequency of '0' and '1' bits
 - **Expected result**: Approximately 50% each
 
-### 2. Subsequence Analysis
-- Analyzes average number of zeros in 1000-bit windows
-- **Expected result**: Approximately 500 zeros per subsequence
-
-### 3. Pattern Frequency Test
-- Counts all 16 possible 4-bit patterns (0000 through 1111)
-- **Expected result**: Each pattern appears ~625 times in 10,000 bits
+### 2. Pattern Analysis
+- Analyzes distribution of bits
+- **Expected result**: Uniform distribution
 
 ## Security Properties
 
 ### 1. Cryptographic Security
-- **Provably secure** under the assumption that HMAC is a secure PRF (Pseudorandom Function)
-- Based on well-studied cryptographic primitives (SHA-256, HMAC)
-- Widely reviewed and standardized by NIST
+- Based on SHA-256's one-way property
+- Computationally secure if SHA-256 is secure
+- Simple construction reduces attack surface
 
 ### 2. Prediction Resistance
-Given all previous outputs, predicting the next output is computationally infeasible.
+Given all previous outputs, predicting the next output requires breaking SHA-256.
 
-### 3. Backtracking Resistance
-Compromise of the current internal state does not reveal previous outputs due to the one-way nature of HMAC.
+### 3. Forward Security
+After each state update (seed = SHA256(seed || counter)), the previous seed cannot be recovered.
 
-### 4. State Compromise Extension Resistance
-After reseeding with fresh entropy, previous state compromise does not affect security.
+### 4. Limitations
+- **Not NIST standardized**: Simplified educational version
+- **Less robust than HMAC_DRBG**: No key separation
+- **Entropy dependency**: Security depends entirely on initial entropy quality
 
 ## Comparison with Other Generators
 
-| Property | HMAC_DRBG | BBS | LCG | MT19937 |
-|----------|-----------|-----|-----|---------|
-| **Cryptographic Security** | ✓ | ✓ | ✗ | ✗ |
-| **Prediction Resistance** | ✓ | ✓ | ✗ | ✗ |
-| **Backtracking Resistance** | ✓ | ✓ | ✗ | ✗ |
-| **Speed** | Fast | Slow | Very Fast | Very Fast |
-| **Standardized** | NIST | Academic | N/A | N/A |
-| **Widely Used** | ✓ | ✗ | ✗ | ✓ |
+| Property | Hash_DRBG (Simple) | HMAC_DRBG | BBS | LCG | MT19937 |
+|----------|-------------------|-----------|-----|-----|---------|
+| **Cryptographic Security** | ✓ | ✓ | ✓ | ✗ | ✗ |
+| **Prediction Resistance** | ✓ | ✓ | ✓ | ✗ | ✗ |
+| **Simplicity** | ✓✓✓ | ✓✓ | ✓ | ✓✓✓ | ✓✓ |
+| **Speed** | Fast | Fast | Slow | Very Fast | Very Fast |
+| **NIST Standardized** | ✗ | ✓ | ✗ | ✗ | ✗ |
+| **Educational Value** | ✓✓✓ | ✓✓ | ✓ | ✓ | ✓ |
 
 ## Usage Examples
 
 ### Basic Usage
 ```python
 import os
-from HMAC_DRBG import HMAC_DRBG
+from Hash_DRBG import Simple_Hash_DRBG
 
 # Instantiate with system entropy
-drbg = HMAC_DRBG(
-    entropy=os.urandom(32),
-    nonce=os.urandom(16),
-    personalization=b"MyApplication"
-)
+drbg = Simple_Hash_DRBG(entropy=os.urandom(32))
 
 # Generate random bytes
 random_bytes = drbg.generate(32)
@@ -184,11 +211,11 @@ nonce = drbg.generate(12)  # 96 bits
 ### Periodic Reseeding
 ```python
 # Generate many random values
-for i in range(20000):
+for i in range(1000):
     random_bytes = drbg.generate(32)
 
-    # Reseed every 10000 requests
-    if drbg.reseed_counter > 10000:
+    # Reseed every 100 requests (example)
+    if i % 100 == 0:
         fresh_entropy = os.urandom(32)
         drbg.reseed(fresh_entropy)
 ```
@@ -196,76 +223,127 @@ for i in range(20000):
 ## Running the Demonstration
 
 ```bash
-python CSPRNG/HMAC_DRBG.py
+python GENERATORS/CSPRNG/Hash_DRBG.py
 ```
 
 **Expected Output**:
 ```
-======================================================================
-HMAC_DRBG - NIST SP 800-90A Demonstration
-======================================================================
+============================================================
+Simple Hash_DRBG - Demonstration
+============================================================
 
-1. Instantiating HMAC_DRBG with entropy...
+1. Creating generator with random entropy
    Entropy: a3f8c9...
-   Nonce: 7b2e1a...
-   Personalization: HMAC_DRBG_Demo_2026
+✓ Generator initialized with seed: 307c57dc3335e553...
 
-2. Generating 32 random bytes...
-   Random bytes: [hex output]
+2. Generating 16 random bytes
+   Result: 4b31c1d600f6a7725fed43c66fad2e21
 
-3. Generating 10000 random bits for statistical analysis...
-   Total bits: 10000
-   Zero count: ~5000 (~50.00%)
-   One count: ~5000 (~50.00%)
+3. Generating 1000 bits
+   First 80 bits: 0110110111101010...
+   Statistics: 511 zeros, 489 ones
+   Proportion: 51.1% zeros, 48.9% ones
 
-4. Statistical Test: Average zeros per 1000-bit subsequence
-   Expected: ~500
-   Actual: [value close to 500]
-   Deviation: [small value]
+4. Generating 10 integers between 1 and 100
+   Results: [28, 31, 32, 62, 56, 35, 21, 20, 51, 93]
 
-5. Statistical Test: 4-bit pattern distribution
-   Expected frequency per pattern: ~625
-   [Distribution table showing uniform distribution]
+5. Reseeding with new entropy
+   New entropy: 067c40f0...
+✓ Generator reseeded with new seed: 905ea8bb32b85584...
 
-6. Generating random integers in range [1, 100]...
-   Random integers: [list of random integers]
+6. Generating after reseed
+   Result: 6791c0a3f3bef6208c29742d5b7494ca
 
-7. Reseeding with fresh entropy...
-   Fresh entropy: [hex value]
-   Reseed counter reset to: 1
-   Random bytes after reseed: [hex output]
+============================================================
+✓ Demonstration complete!
+============================================================
+
+💡 How does it work?
+------------------------------------------------------------
+1. Start with a SEED (internal state) = SHA256(entropy)
+2. To generate:
+   - Calculate SHA256(seed + counter)
+   - Repeat until we have enough bytes
+   - Update seed = SHA256(seed + counter)
+3. Seed changes after each generation → unpredictable
+4. SHA256 is irreversible → secure
+
+🔒 Why is it secure?
+------------------------------------------------------------
+- Impossible to calculate seed from outputs (SHA256)
+- Impossible to predict next outputs
+- Seed changes after each use
+```
+
+## Visualization
+
+### State Evolution
+```
+Initial State:
+entropy → [SHA256] → seed₀
+
+First Generation:
+seed₀ + 0 → [SHA256] → output₁
+seed₀ + counter → [SHA256] → seed₁
+
+Second Generation:
+seed₁ + 0 → [SHA256] → output₂
+seed₁ + counter → [SHA256] → seed₂
+
+...and so on
+```
+
+### Security Guarantee
+```
+Given: output₁, output₂, ..., outputₙ
+Find: seedₙ₊₁ (to predict outputₙ₊₁)
+
+This requires inverting SHA256, which is computationally infeasible.
 ```
 
 ## References
 
 1. **NIST SP 800-90A Rev. 1**: "Recommendation for Random Number Generation Using Deterministic Random Bit Generators" (January 2015)
    - [Official NIST Publication](https://csrc.nist.gov/publications/detail/sp/800-90a/rev-1/final)
+   - This implementation is a simplified educational version, not fully NIST-compliant
 
-2. **RFC 6979**: "Deterministic Usage of the Digital Signature Algorithm (DSA) and Elliptic Curve Digital Signature Algorithm (ECDSA)"
-   - Uses HMAC_DRBG for deterministic signature generation
+2. **FIPS 180-4**: "Secure Hash Standard (SHS)" - SHA-256 specification
+   - [NIST FIPS 180-4](https://csrc.nist.gov/publications/detail/fips/180/4/final)
 
-3. Bellare, M., & Rogaway, P. (1996). "The Exact Security of Digital Signatures: How to Sign with RSA and Rabin." *Advances in Cryptology — EUROCRYPT '96*.
-
-4. Krawczyk, H., Bellare, M., & Canetti, R. (1997). "HMAC: Keyed-Hashing for Message Authentication." *RFC 2104*.
+3. Bellare, M., & Rogaway, P. (1993). "Random Oracles are Practical: A Paradigm for Designing Efficient Protocols."
 
 ## Best Practices
 
-1. **Use sufficient entropy**: Always provide at least 256 bits of entropy for SHA-256
-2. **Include a nonce**: Use at least 128 bits of nonce for additional security
-3. **Reseed periodically**: Reseed after 10,000 requests or after security-critical operations
-4. **Use personalization strings**: Different applications should use different personalization
-5. **Protect internal state**: Keep V and Key secure in memory
-6. **Source entropy properly**: Use cryptographically secure sources like `os.urandom()`
+1. **Use sufficient entropy**: Always provide at least 256 bits (32 bytes) of entropy
+2. **Source entropy properly**: Use cryptographically secure sources like `os.urandom()`
+3. **Reseed periodically**: Consider reseeding after a large number of requests
+4. **Protect internal state**: Keep seed and counter secure in memory
+5. **Use for education**: This is a simplified version - use HMAC_DRBG or CTR_DRBG for production
+
+## When to Use This Implementation
+
+### ✓ Good For:
+- **Learning**: Understanding DRBG principles
+- **Education**: Teaching cryptographic concepts
+- **Prototyping**: Quick random number generation for testing
+- **Non-critical applications**: Where simplicity is valued
+
+### ✗ Not Recommended For:
+- **Production systems**: Use NIST-approved HMAC_DRBG or CTR_DRBG
+- **High-security applications**: Use fully standardized implementations
+- **Compliance requirements**: NIST/FIPS compliance requires approved algorithms
 
 ## Limitations and Considerations
 
-- **Entropy dependency**: Security depends on the quality of initial entropy
+- **Simplified design**: Not fully NIST SP 800-90A compliant
+- **Entropy dependency**: Security entirely depends on initial entropy quality
 - **Deterministic**: Given the same seed, produces the same output (by design)
-- **Memory**: Requires secure storage of internal state (64 bytes for SHA-256)
-- **Performance**: Slower than non-cryptographic PRNGs but acceptable for most applications
+- **No additional input**: Unlike NIST DRBG, doesn't support additional input per request
+- **Educational purpose**: Designed for understanding, not production use
 
 ---
 
-**Implementation**: [HMAC_DRBG.py](HMAC_DRBG.py)
-**Standard**: NIST SP 800-90A Revision 1
-**Security Strength**: 256 bits (with SHA-256)
+**Implementation**: [Hash_DRBG.py](Hash_DRBG.py)
+**Based on**: SHA-256 hash function
+**Security Strength**: 256 bits (theoretical)
+**Purpose**: Educational demonstration of DRBG principles
