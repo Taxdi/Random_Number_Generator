@@ -1,201 +1,138 @@
 """
-Hash_DRBG - Simple Deterministic Random Bit Generator based on SHA-256
-Simplified version to understand the principle
+NIST SP 800-90A Hash_DRBG (SHA-256)
+
+Implémentation simplifiée du Deterministic Random Bit Generator
+basé sur SHA-256, conforme au standard NIST SP 800-90A.
+
+L'état est représenté par un dict {"V": bytes, "C": bytes, "reseed_counter": int}.
+
+Ce CSPRNG offre des garanties contre la prédiction des sorties
+futures et supporte le reseed pour rafraîchir l'entropie.
 """
 
 import hashlib
 import os
 
+SEED_LEN = 55  # seedlen pour SHA-256 = 440 bits = 55 octets
 
-class Simple_Hash_DRBG:
+
+def _sha256(data):
+    """SHA-256 hash."""
+    return hashlib.sha256(data).digest()
+
+
+def _hash_df(input_data, num_bytes):
     """
-    Random number generator based solely on SHA-256.
-
-    Simple principle:
-    1. We have an internal state (seed)
-    2. To generate numbers: we hash the state multiple times
-    3. After each generation: we update the state
+    Hash derivation function (Hash_df) selon NIST SP 800-90A.
+    Dérive num_bytes octets à partir des données d'entrée.
     """
-
-    def __init__(self, entropy: bytes):
-        """
-        Initialize the generator with entropy.
-
-        Args:
-            entropy: Initial random data (at least 32 bytes)
-        """
-        if len(entropy) < 32:
-            raise ValueError("At least 32 bytes of entropy required")
-
-        # Internal state: hash the initial entropy
-        self.seed = hashlib.sha256(entropy).digest()
-
-        # Counter to avoid repetition
-        self.counter = 0
-
-        print(f"✓ Generator initialized with seed: {self.seed.hex()[:16]}...")
-
-    def generate(self, num_bytes: int) -> bytes:
-        """
-        Generate random bytes.
-
-        Principle:
-        - Hash (seed + counter) to get 32 bytes
-        - Repeat until we have enough bytes
-        - Update the seed afterwards
-
-        Args:
-            num_bytes: Number of bytes to generate
-
-        Returns:
-            Random bytes
-        """
-        output = b''
-        temp_counter = 0
-
-        # Generate enough bytes
-        while len(output) < num_bytes:
-            # Hash (seed + temporary counter)
-            data = self.seed + temp_counter.to_bytes(4, 'big')
-            chunk = hashlib.sha256(data).digest()
-            output += chunk
-            temp_counter += 1
-
-        # Truncate to requested size
-        result = output[:num_bytes]
-
-        # IMPORTANT: Update internal state
-        self._update_state()
-
-        return result
-
-    def _update_state(self):
-        """
-        Update the internal state so future outputs cannot be predicted.
-
-        Principle: seed = SHA256(seed + counter)
-        """
-        self.counter += 1
-        data = self.seed + self.counter.to_bytes(4, 'big')
-        self.seed = hashlib.sha256(data).digest()
-
-    def generate_bits(self, num_bits: int) -> str:
-        """
-        Generate a string of bits '0' and '1'.
-
-        Args:
-            num_bits: Number of bits to generate
-
-        Returns:
-            String of '0' and '1'
-        """
-        # Calculate how many bytes we need
-        num_bytes = (num_bits + 7) // 8
-
-        # Generate the bytes
-        random_bytes = self.generate(num_bytes)
-
-        # Convert to bits
-        bit_string = ''.join(format(byte, '08b') for byte in random_bytes)
-
-        # Truncate to requested length
-        return bit_string[:num_bits]
-
-    def randint(self, a: int, b: int) -> int:
-        """
-        Generate a random integer between a and b (inclusive).
-
-        Args:
-            a: Lower bound
-            b: Upper bound
-
-        Returns:
-            Random integer in [a, b]
-        """
-        if a > b:
-            raise ValueError("a must be <= b")
-
-        range_size = b - a + 1
-        num_bits = range_size.bit_length()
-
-        # Generate until we get a number in range
-        for _ in range(1000):
-            bits = self.generate_bits(num_bits)
-            value = int(bits, 2)
-
-            if value < range_size:
-                return a + value
-
-        raise RuntimeError("Unable to generate a number in range")
-
-    def reseed(self, new_entropy: bytes):
-        """
-        Reinitialize the generator with new entropy.
-
-        Args:
-            new_entropy: New random data
-        """
-        # Mix the old seed with new entropy
-        combined = self.seed + new_entropy
-        self.seed = hashlib.sha256(combined).digest()
-        self.counter = 0
-
-        print(f"✓ Generator reseeded with new seed: {self.seed.hex()[:16]}...")
+    hash_len = 32
+    num_blocks = (num_bytes + hash_len - 1) // hash_len
+    result = b""
+    for counter in range(1, num_blocks + 1):
+        to_hash = counter.to_bytes(1, "big") + num_bytes.to_bytes(4, "big") + input_data
+        result += _sha256(to_hash)
+    return result[:num_bytes]
 
 
-def demonstration():
-    """Simple demonstration of the generator."""
-    print("=" * 60)
-    print("Simple Hash_DRBG - Demonstration")
-    print("=" * 60)
-    print()
+def drbg_instantiate(entropy=None, nonce=None, personalization=b""):
+    """
+    Instancie le DRBG.
 
-    # 1. Create the generator
-    print("1. Creating generator with random entropy")
-    entropy = os.urandom(32)  # 32 bytes = 256 bits of entropy
-    print(f"   Entropy: {entropy.hex()[:32]}...")
-    drbg = Simple_Hash_DRBG(entropy)
-    print()
+    Args:
+        entropy          : entropie initiale (bytes). Si None, os.urandom.
+        nonce            : nonce (bytes). Si None, os.urandom.
+        personalization  : chaîne de personnalisation optionnelle
 
-    # 2. Generate bytes
-    print("2. Generating 16 random bytes")
-    random_bytes = drbg.generate(16)
-    print(f"   Result: {random_bytes.hex()}")
-    print()
+    Returns:
+        state : dict {"V", "C", "reseed_counter"}
+    """
+    if entropy is None:
+        entropy = os.urandom(SEED_LEN)
+    if nonce is None:
+        nonce = os.urandom(SEED_LEN // 2)
 
-    # 3. Generate bits
-    print("3. Generating 1000 bits")
-    bits = drbg.generate_bits(1000)
-    zero_count = bits.count('0')
-    one_count = bits.count('1')
-    print(f"   First 80 bits: {bits[:80]}")
-    print(f"   Statistics: {zero_count} zeros, {one_count} ones")
-    print(f"   Proportion: {zero_count/10:.1f}% zeros, {one_count/10:.1f}% ones")
-    print()
+    seed_material = entropy + nonce + personalization
+    seed = _hash_df(seed_material, SEED_LEN)
 
-    # 4. Generate integers
-    print("4. Generating 10 integers between 1 and 100")
-    random_ints = [drbg.randint(1, 100) for _ in range(10)]
-    print(f"   Results: {random_ints}")
-    print()
+    V = seed
+    C = _hash_df(b"\x00" + seed, SEED_LEN)
+    return {"V": V, "C": C, "reseed_counter": 1}
 
-    # 5. Reseed
-    print("5. Reseeding with new entropy")
-    new_entropy = os.urandom(32)
-    print(f"   New entropy: {new_entropy.hex()[:32]}...")
-    drbg.reseed(new_entropy)
-    print()
 
-    # 6. Generate after reseed
-    print("6. Generating after reseed")
-    random_bytes_after = drbg.generate(16)
-    print(f"   Result: {random_bytes_after.hex()}")
-    print()
+def drbg_reseed(state, entropy=None):
+    """
+    Reseed le DRBG avec de la nouvelle entropie.
 
-    print("=" * 60)
-    print("✓ Demonstration complete!")
-    print("=" * 60)
-    print()
+    Args:
+        state   : état courant
+        entropy : nouvelle entropie (bytes). Si None, os.urandom.
+
+    Returns:
+        state mis à jour
+    """
+    if entropy is None:
+        entropy = os.urandom(SEED_LEN)
+
+    seed = _hash_df(b"\x01" + state["V"] + entropy, SEED_LEN)
+    state["V"] = seed
+    state["C"] = _hash_df(b"\x00" + seed, SEED_LEN)
+    state["reseed_counter"] = 1
+    return state
+
+
+def drbg_generate(state, num_bytes):
+    """
+    Génère num_bytes octets pseudo-aléatoires.
+
+    Args:
+        state     : état courant
+        num_bytes : nombre d'octets à générer
+
+    Returns:
+        (output_bytes, state)
+    """
+    hash_len = 32
+    m = (num_bytes + hash_len - 1) // hash_len
+    W = b""
+    data = state["V"]
+    for _ in range(m):
+        W += _sha256(data)
+        int_data = (int.from_bytes(data, "big") + 1) % (2 ** (len(data) * 8))
+        data = int_data.to_bytes(len(state["V"]), "big")
+    output = W[:num_bytes]
+
+    # Mise à jour de l'état
+    H = _sha256(b"\x03" + state["V"])
+    int_v = int.from_bytes(state["V"], "big")
+    int_h = int.from_bytes(H, "big")
+    int_c = int.from_bytes(state["C"], "big")
+    mod = 2 ** (SEED_LEN * 8)
+    new_v = (int_v + int_h + int_c + state["reseed_counter"]) % mod
+    state["V"] = new_v.to_bytes(SEED_LEN, "big")
+    state["reseed_counter"] += 1
+
+    return output, state
+
+
+def drbg_generate_bytes(n, entropy=None, nonce=None):
+    """
+    Fonction raccourci : instancie le DRBG et génère n octets.
+
+    Returns:
+        bytes de longueur n
+    """
+    state = drbg_instantiate(entropy=entropy, nonce=nonce)
+    output, _ = drbg_generate(state, n)
+    return output
+
 
 if __name__ == "__main__":
-    demonstration()
+    state = drbg_instantiate(entropy=b"A" * 55, nonce=b"B" * 28)
+    print("Hash_DRBG (SHA-256) - 32 octets :")
+    data, state = drbg_generate(state, 32)
+    print(f"  {data.hex()}")
+    print(f"\nAprès reseed - 32 octets :")
+    state = drbg_reseed(state, b"C" * 55)
+    data, state = drbg_generate(state, 32)
+    print(f"  {data.hex()}")
