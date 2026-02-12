@@ -148,3 +148,7 @@ if __name__ == "__main__":
         print(f"  {val}")
     data, _ = mt_generate_bytes(16, seed=42)
     print(f"\n16 octets : {data.hex()}")
+
+
+
+print("Hello world")
