@@ -17,11 +17,7 @@ Condition de succès :
     La graine retrouvée permet de déchiffrer l'intégralité du message.
 """
 
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
-from generators.lcg import lcg_generate_bytes
+from GENERATORS import lcg_generate_bytes
 
 
 def lcg_encrypt(plaintext, seed, a, c, m):

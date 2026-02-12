@@ -10,7 +10,7 @@ suivant une loi normale standard N(0,1) :
 """
 
 import math
-from .mersenne_twister import mt_init, mt_next_float
+from ..PRNG_non_cryptographics.mersenne_twister import mt_init, mt_next_float
 
 
 def box_muller(u1, u2):

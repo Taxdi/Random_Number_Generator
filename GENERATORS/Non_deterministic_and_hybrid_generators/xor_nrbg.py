@@ -11,9 +11,9 @@ combiné hérite de cette qualité.
     output = source_1 XOR source_2 XOR ... XOR source_n
 """
 
-from .lcg import lcg_generate_bytes
-from .mersenne_twister import mt_generate_bytes
-from .os_random import os_generate_bytes
+from ..PRNG_non_cryptographics.lcg import lcg_generate_bytes
+from ..PRNG_non_cryptographics.mersenne_twister import mt_generate_bytes
+from ..CSPRNG.os_random import os_generate_bytes
 
 
 def xor_bytes_list(byte_arrays):

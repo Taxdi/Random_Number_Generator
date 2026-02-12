@@ -1,5 +1,16 @@
+"""
+Blum-Blum-Shub (BBS)
+
+Générateur pseudo-aléatoire cryptographiquement sécurisé fondé sur
+la difficulté de la factorisation. La suite est définie par :
+    X_{j} = (X_{j-1})^2 mod M,  où M = p * q (nombres premiers de Blum)
+
+Seul le bit de poids faible (LSB) de chaque X_j est conservé comme
+sortie, garantissant la sécurité sous l'hypothèse de résidus quadratiques.
+"""
+
 import math
-from random import randint
+import os
 from itertools import product
 
 # Paramètres par défaut (p ≡ 3 mod 4, q ≡ 3 mod 4)
@@ -10,9 +21,10 @@ DEFAULT_Q = 2001911
 def bbs_init(seed=None, p=DEFAULT_P, q=DEFAULT_Q):
     M = p * q
     if seed is None:
-        seed = randint(2, M - 1)
+        # Utiliser os.urandom pour générer une graine sûre
+        seed = int.from_bytes(os.urandom(8), "big") % (M - 2) + 2
         while math.gcd(seed, M) != 1:
-            seed = randint(2, M - 1)
+            seed = int.from_bytes(os.urandom(8), "big") % (M - 2) + 2
 
     if math.gcd(seed, M) != 1:
         raise ValueError(f"La graine {seed} n'est pas coprime avec M={M}")

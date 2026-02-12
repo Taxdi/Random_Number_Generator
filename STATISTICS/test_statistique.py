@@ -171,8 +171,10 @@ def ks_test(data, significance=0.05):
     if isinstance(data, (bytes, bytearray)):
         data = list(data)
 
-    # Normaliser les valeurs sur [0, 1] pour le test KS
-    normalized = np.array(data, dtype=np.float64) / 255.0
+    # Normaliser les valeurs sur [0, 1) pour le test KS
+    # Division par 256 (et non 255) pour obtenir des valeurs dans [0, 1)
+    # compatibles avec la distribution uniforme U(0, 1)
+    normalized = (np.array(data, dtype=np.float64) + 0.5) / 256.0
 
     # Test KS contre une distribution uniforme U(0, 1)
     stat, p_value = stats.kstest(normalized, "uniform")

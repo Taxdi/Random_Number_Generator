@@ -18,11 +18,9 @@ Condition de succès :
     futures du MT original.
 """
 
-import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from generators.mersenne_twister import mt_init, mt_extract, untemper, N
+from GENERATORS import mt_init, mt_extract, untemper, N
 
 
 def clone_mt(outputs):
